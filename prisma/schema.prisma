@@ -1,0 +1,289 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id            String    @id @default(uuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          String    @default("USER") // ADMIN, MANAGER, USER
+  accounts      Account[]
+  sessions      Session[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?
+  access_token       String?
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  phone     String?
+  company   String?
+  address   String?
+  orders    Order[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id            String              @id @default(uuid())
+  sku           String              @unique
+  name          String
+  description   String?
+  productType   String              @default("FINISHED_GOOD") // RAW_MATERIAL, FINISHED_GOOD
+  price         Float
+  stock         Int                 @default(0)
+  category      String?
+
+  // Relations
+  asFinishedGood   BOMItem[]           @relation("FinishedGood")
+  asRawMaterial    BOMItem[]           @relation("RawMaterial")
+  productionOrders ProductionOrder[]
+
+  orderItems    OrderItem[]
+  purchaseItems PurchaseOrderItem[]
+  movements     InventoryMovement[]
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  orderNumber String      @unique
+  customerId  String
+  customer    Customer    @relation(fields: [customerId], references: [id])
+  type        String      @default("ORDER") // QUOTATION, ORDER
+  status      String      @default("PENDING") // PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED
+  paymentStatus String    @default("UNPAID") // UNPAID, PAID
+  total       Float
+  validUntil  DateTime?   
+  notes       String?     
+  items       OrderItem[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  productId String
+  quantity  Int
+  price     Float   // Price at the time of order
+  
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+}
+
+// ----------------------------------------------------
+// MM (Materials Management) Modülü - YENİ
+// ----------------------------------------------------
+model Vendor {
+  id          String   @id @default(uuid())
+  vendorCode  String   @unique
+  name        String
+  email       String?
+  phone       String?
+  address     String?
+  purchases   PurchaseOrder[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PurchaseOrder {
+  id          String      @id @default(uuid())
+  poNumber    String      @unique
+  vendorId    String
+  vendor      Vendor      @relation(fields: [vendorId], references: [id])
+  status      String      @default("DRAFT") // DRAFT, ISSUED, RECEIVED
+  paymentStatus String    @default("UNPAID") // UNPAID, PAID
+  totalAmount Float
+  items       PurchaseOrderItem[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model PurchaseOrderItem {
+  id              String  @id @default(uuid())
+  purchaseOrderId String
+  productId       String
+  quantity        Int
+  unitCost        Float
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product         Product       @relation(fields: [productId], references: [id])
+}
+
+model InventoryMovement {
+  id          String   @id @default(uuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  type        String   // IN (Goods Receipt), OUT (Goods Issue/Sale), ADJ (Stock Adjustment)
+  quantity    Int
+  reference   String?  // OrderNumber or PONumber
+  notes       String?
+  createdAt   DateTime @default(now())
+}
+
+// ----------------------------------------------------
+// FI (Financial Accounting) Modülü - YENİ
+// ----------------------------------------------------
+model FinancialTransaction {
+  id            String   @id @default(uuid())
+  type          String   // INCOME, EXPENSE
+  amount        Float
+  referenceId   String?  // The OrderNumber or PONumber
+  referenceType String   // SALE, PURCHASE, MANUAL
+  description   String?
+  createdAt     DateTime @default(now())
+}
+
+// ----------------------------------------------------
+// HR/HCM (İnsan Kaynakları) Modülü - YENİ
+// ----------------------------------------------------
+model Employee {
+  id          String    @id @default(uuid())
+  firstName   String
+  lastName    String
+  email       String    @unique
+  phone       String?
+  department  String
+  position    String
+  salary      Float     // Monthly base salary
+  hireDate    DateTime  @default(now())
+  status      String    @default("ACTIVE") // ACTIVE, TERMINATED
+  payrolls    Payroll[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Payroll {
+  id          String   @id @default(uuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id])
+  month       Int
+  year        Int
+  baseAmount  Float
+  netAmount   Float
+  paymentDate DateTime?
+  status      String   @default("PENDING") // PENDING, PAID
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ----------------------------------------------------
+// PP (Production Planning) Modülü - YENİ
+// ----------------------------------------------------
+model BOMItem {
+  id                String  @id @default(uuid())
+  finishedProductId String
+  finishedProduct   Product @relation("FinishedGood", fields: [finishedProductId], references: [id])
+  rawMaterialId     String
+  rawMaterial       Product @relation("RawMaterial", fields: [rawMaterialId], references: [id])
+  quantity          Int     // Kaç adet rawMaterial lazım?
+  createdAt         DateTime @default(now())
+}
+
+model ProductionOrder {
+  id          String   @id @default(uuid())
+  orderNumber String   @unique // PRD-xxxxxx
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  quantity    Int      // Kaç adet finished good üretilecek?
+  status      String   @default("PLANNED") // PLANNED, IN_PROGRESS, COMPLETED, CANCELLED
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ----------------------------------------------------
+// PM (Plant Maintenance) Modülü - YENİ
+// ----------------------------------------------------
+model Equipment {
+  id            String            @id @default(uuid())
+  code          String            @unique  // EQ-001
+  name          String
+  serialNumber  String?
+  location      String?           // Factory Hall A, Warehouse B
+  status        String            @default("OPERATIONAL") // OPERATIONAL, UNDER_MAINTENANCE, DECOMMISSIONED
+  purchaseDate  DateTime?
+  tasks         MaintenanceTask[]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+}
+
+model MaintenanceTask {
+  id            String     @id @default(uuid())
+  taskNumber    String     @unique  // MNT-xxxxxx
+  equipmentId   String
+  equipment     Equipment  @relation(fields: [equipmentId], references: [id])
+  taskType      String     // PREVENTIVE, BREAKDOWN, INSPECTION
+  description   String
+  priority      String     @default("MEDIUM")  // LOW, MEDIUM, HIGH, CRITICAL
+  status        String     @default("OPEN")    // OPEN, IN_PROGRESS, DONE
+  cost          Float?     // Maintenance cost (auto-posts to FI)
+  scheduledDate DateTime?
+  completedDate DateTime?
+  notes         String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+// ----------------------------------------------------
+// QM (Quality Management) Modülü - YENİ
+// ----------------------------------------------------
+model QualityInspection {
+  id              String   @id @default(uuid())
+  inspectionNumber String  @unique  // QI-xxxxxx
+  referenceType   String   // PRODUCTION, PURCHASE
+  referenceId     String   // ProductionOrder.id or PurchaseOrder.id
+  referenceNumber String   // PRD-001 or PO-001
+  productId       String
+  quantity        Int
+  status          String   @default("PENDING") // PENDING, PASSED, FAILED
+  result          String?  // Inspector notes
+  inspectedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
